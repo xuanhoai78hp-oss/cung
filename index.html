@@ -53,9 +53,12 @@
       .target-detail {
         display: grid;
         position: relative;
+        align-content: start;
         justify-items: center;
-        gap: 6px;
+        gap: 5px;
         width: 100%;
+        max-height: min(43svh, 320px);
+        overflow: hidden;
         padding: 8px;
         border: 1px solid #d6c18c66;
         border-radius: 14px;
@@ -100,7 +103,7 @@
 
       #target-detail-canvas {
         display: block;
-        width: min(100%, 112px);
+        width: min(100%, 184px);
         height: auto;
         aspect-ratio: 1;
         border: 1px solid #f3f0e288;
@@ -130,7 +133,7 @@
       }
 
       .target-history-scroll {
-        max-height: 82px;
+        max-height: 52px;
         overflow: auto;
         scrollbar-color: #70857a #15201f;
         scrollbar-width: thin;
@@ -478,17 +481,35 @@
       }
 
       .controls {
-        display: flex;
+        display: grid;
         position: absolute;
         z-index: 4;
-        right: 16px;
-        bottom: 100px;
-        flex-direction: column;
-        gap: 9px;
-        width: min(156px, 24vw);
-        padding: 0;
+        right: auto;
+        bottom: 12px;
+        left: 50%;
+        grid-template-columns: minmax(0, 1.65fr) minmax(96px, 0.85fr);
+        align-items: stretch;
+        gap: 12px;
+        width: min(calc(100% - 24px), 470px);
         border: 0;
         background: transparent;
+        transform: translateX(-50%);
+      }
+
+      .control-actions {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        justify-content: center;
+        gap: 10px;
+      }
+
+      .control-actions button {
+        width: 100%;
+        min-height: 68px;
+        padding: 10px 8px;
+        font-size: clamp(0.7rem, 3.2vw, 0.88rem);
+        line-height: 1.25;
       }
 
       .power-meter {
@@ -593,16 +614,20 @@
         }
 
         .controls {
-          right: 12px;
-          bottom: 18px;
-          gap: 8px;
-          width: min(172px, 52vw);
+          bottom: 12px;
+          gap: 9px;
+          width: calc(100% - 24px);
+          grid-template-columns: minmax(0, 1.65fr) minmax(92px, 0.85fr);
         }
 
-        .controls button {
-          min-height: 56px;
+        .control-actions {
+          gap: 8px;
+        }
+
+        .control-actions button {
+          min-height: 64px;
           padding: 8px 6px;
-          font-size: 0.68rem;
+          font-size: 0.7rem;
           line-height: 1.2;
         }
 
@@ -653,12 +678,19 @@
 
       @media (max-width: 360px) {
         .controls {
-          right: 8px;
-          width: min(166px, 52vw);
+          width: calc(100% - 16px);
+          grid-template-columns: minmax(0, 1.55fr) minmax(84px, 0.85fr);
+          gap: 7px;
         }
 
         .target-detail {
           padding: 6px;
+        }
+
+        .control-actions button {
+          min-height: 60px;
+          padding: 6px 4px;
+          font-size: 0.65rem;
         }
       }
 
@@ -757,13 +789,15 @@
               </div>
             </section>
           </aside>
-          <div class="power-meter" id="power-field" hidden>
-            <div class="power-meter-track" id="power-meter" role="meter" aria-label="Lực kéo cung" aria-valuemin="50" aria-valuemax="100" aria-valuenow="50">
-              <span class="power-meter-fill" id="power-meter-fill"></span>
+          <div class="control-actions">
+            <div class="power-meter" id="power-field" hidden>
+              <div class="power-meter-track" id="power-meter" role="meter" aria-label="Lực kéo cung" aria-valuemin="50" aria-valuemax="100" aria-valuenow="50">
+                <span class="power-meter-fill" id="power-meter-fill"></span>
+              </div>
             </div>
+            <button id="throw" type="button">Giữ để ngắm · thả để bắn</button>
+            <button class="secondary" id="back-to-lobby" type="button">Về sảnh</button>
           </div>
-          <button id="throw" type="button">Giữ để ngắm · thả để bắn</button>
-          <button class="secondary" id="back-to-lobby" type="button">Về sảnh</button>
         </div>
       </section>
     </main>
