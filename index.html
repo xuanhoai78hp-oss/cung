@@ -50,6 +50,131 @@
         transition: transform 280ms ease, opacity 280ms ease;
       }
 
+      .target-detail {
+        display: grid;
+        position: relative;
+        justify-items: center;
+        gap: 6px;
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #d6c18c66;
+        border-radius: 14px;
+        background: linear-gradient(155deg, #1a2a27f2, #0b1114f5);
+        box-shadow: 0 12px 32px #0005, inset 0 1px #ffffff12;
+        backdrop-filter: blur(12px);
+        pointer-events: none;
+      }
+
+      .target-detail-header {
+        display: flex;
+        width: 100%;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .target-detail-label {
+        color: #d7e2da;
+        font-size: 0.64rem;
+        font-weight: 750;
+        letter-spacing: 0.08em;
+      }
+
+      .target-detail-live {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        color: #f0cf91;
+        font-size: 0.53rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+      }
+
+      .target-detail-live::before {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #e66c58;
+        box-shadow: 0 0 8px #e66c58aa;
+        content: "";
+      }
+
+      #target-detail-canvas {
+        display: block;
+        width: min(100%, 112px);
+        height: auto;
+        aspect-ratio: 1;
+        border: 1px solid #f3f0e288;
+        border-radius: 9px;
+        box-shadow: 0 3px 14px #0008;
+      }
+
+      .target-history[hidden] {
+        display: none;
+      }
+
+      .target-history {
+        width: 100%;
+        padding: 5px;
+        border: 1px solid #ffffff1a;
+        border-radius: 8px;
+        background: #070d10a8;
+      }
+
+      .target-history-title {
+        display: block;
+        margin-bottom: 4px;
+        color: #aebdb6;
+        font-size: 0.52rem;
+        font-weight: 750;
+        letter-spacing: 0.07em;
+      }
+
+      .target-history-scroll {
+        max-height: 82px;
+        overflow: auto;
+        scrollbar-color: #70857a #15201f;
+        scrollbar-width: thin;
+      }
+
+      .target-history-table {
+        width: max-content;
+        min-width: 100%;
+        border-collapse: collapse;
+        color: #edf2eb;
+        font-size: 0.58rem;
+        font-variant-numeric: tabular-nums;
+        text-align: center;
+      }
+
+      .target-history-table th,
+      .target-history-table td {
+        padding: 3px 5px;
+        border-top: 1px solid #ffffff16;
+        white-space: nowrap;
+      }
+
+      .target-history-table thead th,
+      .target-history-table tbody th {
+        color: #d7e2da;
+        font-weight: 700;
+      }
+
+      .target-history-table tbody td {
+        color: #f0cf91;
+      }
+
+      .target-detail.is-impact {
+        animation: target-impact 420ms ease-out;
+      }
+
+      @keyframes target-impact {
+        0% { transform: translateY(0) scale(1); }
+        24% { transform: translateY(3px) scale(0.97); }
+        58% { transform: translateY(-2px) scale(1.025); }
+        82% { transform: translateY(1px) scale(0.99); }
+        100% { transform: translateY(0) scale(1); }
+      }
+
       .game.is-scoreboard-collapsed .room-board {
         transform: translateY(calc(-100% - 18px));
         opacity: 0;
@@ -471,7 +596,7 @@
           right: 12px;
           bottom: 18px;
           gap: 8px;
-          width: 112px;
+          width: min(172px, 52vw);
         }
 
         .controls button {
@@ -529,7 +654,11 @@
       @media (max-width: 360px) {
         .controls {
           right: 8px;
-          width: 72px;
+          width: min(166px, 52vw);
+        }
+
+        .target-detail {
+          padding: 6px;
         }
       }
 
@@ -551,6 +680,10 @@
         *::after {
           scroll-behavior: auto !important;
           transition-duration: 0.01ms !important;
+        }
+
+        .target-detail.is-impact {
+          animation-duration: 0.01ms;
         }
       }
     </style>
@@ -608,6 +741,22 @@
           </div>
         </section>
         <div class="controls">
+          <aside class="target-detail" id="target-detail" aria-label="Màn hình theo dõi bia và vết bắn">
+            <div class="target-detail-header">
+              <span class="target-detail-label">BIA</span>
+              <span class="target-detail-live">LIVE</span>
+            </div>
+            <canvas id="target-detail-canvas" width="240" height="240" role="img" aria-label="Bia phóng to, hiển thị các vết tên đã bắn"></canvas>
+            <section class="target-history" id="target-history" aria-label="Điểm số các ván đã chơi" hidden>
+              <span class="target-history-title">ĐIỂM CÁC VÁN</span>
+              <div class="target-history-scroll">
+                <table class="target-history-table">
+                  <thead id="target-history-head"></thead>
+                  <tbody id="target-history-body"></tbody>
+                </table>
+              </div>
+            </section>
+          </aside>
           <div class="power-meter" id="power-field" hidden>
             <div class="power-meter-track" id="power-meter" role="meter" aria-label="Lực kéo cung" aria-valuemin="50" aria-valuemax="100" aria-valuenow="50">
               <span class="power-meter-fill" id="power-meter-fill"></span>
@@ -623,6 +772,13 @@
     <script>
       const canvas = document.querySelector("#lane");
       const context = canvas.getContext("2d");
+      const targetDetail = document.querySelector("#target-detail");
+      const targetDetailCanvas = document.querySelector("#target-detail-canvas");
+      const targetDetailContext = targetDetailCanvas.getContext("2d");
+      const targetHistory = document.querySelector("#target-history");
+      const targetHistoryHead = document.querySelector("#target-history-head");
+      const targetHistoryBody = document.querySelector("#target-history-body");
+      const targetHistoryScroll = document.querySelector(".target-history-scroll");
       const powerField = document.querySelector("#power-field");
       const powerMeter = document.querySelector("#power-meter");
       const powerMeterFill = document.querySelector("#power-meter-fill");
@@ -674,6 +830,7 @@
       let playerId = "";
       let roomCode = "";
       let gamePlayers = [];
+      let soloMatchHistoryByPlayer = loadSoloMatchHistory();
       let currentFrameIndex = -1;
       let gameStarted = false;
       let gameFinished = false;
@@ -703,6 +860,44 @@
         roomBoard.inert = collapsed;
         if (!collapsed) {
           rollsSinceScoreboardCollapsed = 0;
+        }
+      }
+
+      function loadSoloMatchHistory() {
+        try {
+          const stored = JSON.parse(window.localStorage.getItem("archery-solo-match-history") ?? "{}");
+          if (!stored || typeof stored !== "object" || Array.isArray(stored)) {
+            throw new Error("Dữ liệu lịch sử không đúng định dạng.");
+          }
+
+          const history = new Map();
+          for (const [id, scores] of Object.entries(stored)) {
+            if (
+              !Array.isArray(scores)
+              || !scores.every((score) => Number.isInteger(score) && score >= 0 && score <= 100)
+            ) {
+              console.warn(`Bỏ qua lịch sử không hợp lệ của ${id}.`);
+              continue;
+            }
+            history.set(id, scores);
+          }
+          return history;
+        } catch (error) {
+          console.warn("Không đọc được lịch sử các ván solo:", error);
+          return new Map();
+        }
+      }
+
+      function saveSoloMatchHistory() {
+        try {
+          window.localStorage.setItem(
+            "archery-solo-match-history",
+            JSON.stringify(Object.fromEntries(soloMatchHistoryByPlayer)),
+          );
+          return true;
+        } catch (error) {
+          console.error("Không lưu được lịch sử các ván solo:", error);
+          return false;
         }
       }
 
@@ -860,7 +1055,56 @@
         }
       }
 
+      function renderTargetHistory() {
+        targetHistoryHead.replaceChildren();
+        targetHistoryBody.replaceChildren();
+        const players = gamePlayers;
+        const roundCount = players.reduce(
+          (maximum, player) => Math.max(maximum, player.history?.length ?? 0),
+          0,
+        );
+        targetHistory.hidden = !gameStarted || roundCount === 0;
+        if (targetHistory.hidden) {
+          return;
+        }
+
+        const previousScrollTop = targetHistoryScroll.scrollTop;
+        const previousScrollLeft = targetHistoryScroll.scrollLeft;
+        const headerRow = document.createElement("tr");
+        const roundHeading = document.createElement("th");
+        roundHeading.scope = "col";
+        roundHeading.textContent = "Ván";
+        headerRow.append(roundHeading);
+        for (const player of players) {
+          const heading = document.createElement("th");
+          heading.scope = "col";
+          heading.textContent = player.name.length > 9 ? `${player.name.slice(0, 8)}…` : player.name;
+          heading.title = player.name;
+          headerRow.append(heading);
+        }
+        targetHistoryHead.append(headerRow);
+
+        for (let roundIndex = roundCount - 1; roundIndex >= 0; roundIndex -= 1) {
+          const row = document.createElement("tr");
+          const roundCell = document.createElement("th");
+          roundCell.scope = "row";
+          roundCell.textContent = String(roundIndex + 1);
+          row.append(roundCell);
+          for (const player of players) {
+            const scoreCell = document.createElement("td");
+            scoreCell.textContent = player.history?.[roundIndex] === undefined
+              ? "—"
+              : String(player.history[roundIndex]);
+            row.append(scoreCell);
+          }
+          targetHistoryBody.append(row);
+        }
+        targetHistoryScroll.scrollTop = previousScrollTop;
+        targetHistoryScroll.scrollLeft = previousScrollLeft;
+      }
+
       function renderRoomBoard() {
+        renderTargetHistory();
         if (gameMode === "solo") {
           renderSoloScoreboard();
           return;
@@ -1048,8 +1292,22 @@
         frozenTargetPosition = { x: centerX, y: 562 };
         targetMarks = [];
         gamePlayers = [
-          { id: playerId, name: playerName, connected: true, arrows: [], score: 0 },
-          { id: "archery-npc", name: "Cung thủ máy", connected: true, arrows: [], score: 0 },
+          {
+            id: playerId,
+            name: playerName,
+            connected: true,
+            arrows: [],
+            score: 0,
+            history: soloMatchHistoryByPlayer.get(playerId) ?? [],
+          },
+          {
+            id: "archery-npc",
+            name: "Cung thủ máy",
+            connected: true,
+            arrows: [],
+            score: 0,
+            history: soloMatchHistoryByPlayer.get("archery-npc") ?? [],
+          },
         ];
         targetTransitionStart = performance.now();
         targetTransitionDuration = 900;
@@ -1300,6 +1558,7 @@
         const target = getTargetPosition(now);
         const aiming = throwChargePhase === "charging";
         drawTarget(target.x, target.y, targetZoomed ? 70 : 23, targetMarks);
+        drawTargetDetail();
 
         if (firedArrow) {
           drawFlyingArrow(firedArrow);
@@ -1377,6 +1636,11 @@
         context.fillRect(-radius * 0.13, radius * 0.65, radius * 0.26, 34);
         context.fillStyle = "#664c32";
         context.fillRect(-radius * 0.3, radius * 0.65 + 31, radius * 0.6, 5);
+        drawTargetRings(context, radius, marks);
+        context.restore();
+      }
+
+      function drawTargetRings(targetContext, radius, marks) {
         const ringColors = [
           "#f3f0e2", "#f3f0e2",
           "#151b1b", "#151b1b",
@@ -1385,28 +1649,43 @@
           "#e4bd4c", "#e4bd4c",
         ];
         for (let ringIndex = 0; ringIndex < ringColors.length; ringIndex += 1) {
-          context.fillStyle = ringColors[ringIndex];
-          context.beginPath();
-          context.arc(0, 0, radius * (ringColors.length - ringIndex) / ringColors.length, 0, Math.PI * 2);
-          context.fill();
+          targetContext.fillStyle = ringColors[ringIndex];
+          targetContext.beginPath();
+          targetContext.arc(0, 0, radius * (ringColors.length - ringIndex) / ringColors.length, 0, Math.PI * 2);
+          targetContext.fill();
         }
-        context.fillStyle = "#c33d32";
-        context.beginPath();
-        context.arc(0, 0, radius * 0.07, 0, Math.PI * 2);
-        context.fill();
+        targetContext.fillStyle = "#c33d32";
+        targetContext.beginPath();
+        targetContext.arc(0, 0, radius * 0.07, 0, Math.PI * 2);
+        targetContext.fill();
         for (const mark of marks) {
           const markX = mark.x * radius;
           const markY = mark.y * radius;
-          context.fillStyle = "#15110f";
-          context.beginPath();
-          context.arc(markX, markY, Math.max(1.2, radius * 0.025), 0, Math.PI * 2);
-          context.fill();
-          context.fillStyle = "#fff8d977";
-          context.beginPath();
-          context.arc(markX - radius * 0.012, markY - radius * 0.012, Math.max(0.45, radius * 0.008), 0, Math.PI * 2);
-          context.fill();
+          targetContext.fillStyle = "#15110f";
+          targetContext.beginPath();
+          targetContext.arc(markX, markY, Math.max(1.5, radius * 0.035), 0, Math.PI * 2);
+          targetContext.fill();
+          targetContext.fillStyle = "#fff8d977";
+          targetContext.beginPath();
+          targetContext.arc(markX - radius * 0.012, markY - radius * 0.012, Math.max(0.5, radius * 0.01), 0, Math.PI * 2);
+          targetContext.fill();
         }
-        context.restore();
+      }
+
+      function drawTargetDetail() {
+        const size = targetDetailCanvas.width;
+        const radius = size * 0.39;
+        targetDetailContext.clearRect(0, 0, size, size);
+        targetDetailContext.fillStyle = "#ded8c4";
+        targetDetailContext.fillRect(0, 0, size, size);
+        targetDetailContext.save();
+        targetDetailContext.translate(size / 2, size / 2);
+        targetDetailContext.fillStyle = "#7a6347";
+        targetDetailContext.beginPath();
+        targetDetailContext.arc(0, 0, radius + 5, 0, Math.PI * 2);
+        targetDetailContext.fill();
+        drawTargetRings(targetDetailContext, radius, targetMarks);
+        targetDetailContext.restore();
       }
 
       function drawFlyingArrow(arrow) {
@@ -1451,7 +1730,14 @@
         const offsetY = arrowPoint.y - target.y;
         if (Math.hypot(offsetX, offsetY) <= 70) {
           targetMarks.push({ x: offsetX / 70, y: offsetY / 70 });
+          return true;
         }
+        return false;
+      }
+
+      function animateTargetDetailImpact() {
+        targetDetail.classList.remove("is-impact");
+        requestAnimationFrame(() => targetDetail.classList.add("is-impact"));
       }
 
       function drawRoomBackdrop() {
@@ -2149,7 +2435,9 @@
         throwButton.disabled = true;
         powerField.hidden = true;
         animateSoloArrow(aimPoint, (arrowPoint, target) => {
-          recordTargetMark(arrowPoint, target);
+          if (recordTargetMark(arrowPoint, target)) {
+            animateTargetDetailImpact();
+          }
           const score = getArrowScore(arrowPoint, target);
           const player = gamePlayers[0];
           player.arrows[currentArrowIndex] = score;
@@ -2171,7 +2459,9 @@
         throwButton.disabled = true;
         powerField.hidden = true;
         animateSoloArrow(aimPoint, (arrowPoint, target) => {
-          recordTargetMark(arrowPoint, target);
+          if (recordTargetMark(arrowPoint, target)) {
+            animateTargetDetailImpact();
+          }
           drawLane();
           const ownPlayer = gamePlayers.find((player) => player.id === playerId);
           if (!ownPlayer) {
@@ -2264,7 +2554,9 @@
         };
         gameStatus.textContent = "Cung thủ máy đang bắn…";
         animateSoloArrow(aimPoint, (arrow, impactTarget) => {
-          recordTargetMark(arrow, impactTarget);
+          if (recordTargetMark(arrow, impactTarget)) {
+            animateTargetDetailImpact();
+          }
           const score = getArrowScore(arrow, impactTarget);
           const npc = gamePlayers[1];
           npc.arrows[currentArrowIndex] = score;
@@ -2274,7 +2566,15 @@
           targetZoomed = false;
           if (currentArrowIndex >= 10) {
             gameFinished = true;
+            for (const player of gamePlayers) {
+              player.history.push(player.score);
+              soloMatchHistoryByPlayer.set(player.id, player.history);
+            }
+            const historySaved = saveSoloMatchHistory();
             gameStatus.textContent = `Ván kết thúc · ${gamePlayers[0].score}–${npc.score} điểm`;
+            if (!historySaved) {
+              gameStatus.textContent += " · không lưu được lịch sử trên thiết bị";
+            }
             throwButton.disabled = false;
             syncThrowButtonLabel();
           } else {
@@ -2568,6 +2868,11 @@
       shareRoomButton.addEventListener("click", shareRoomLink);
 
       backgroundImage.addEventListener("load", drawLane);
+      targetDetail.addEventListener("animationend", (event) => {
+        if (event.animationName === "target-impact") {
+          targetDetail.classList.remove("is-impact");
+        }
+      });
       backgroundImage.addEventListener("error", () => {
         lobbyNotification.textContent = "Không tải được hình nền bắn cung.";
       });
