@@ -876,6 +876,7 @@
       let playerName = "Người chơi 1";
       let playerId = "";
       let roomCode = "";
+      let shouldAutoJoinRoom = false;
       let gamePlayers = [];
       let soloMatchHistoryByPlayer = loadSoloMatchHistory();
       let currentFrameIndex = -1;
@@ -982,11 +983,15 @@
       const requestedRoomCode = new URLSearchParams(window.location.search).get("room");
       if (requestedRoomCode) {
         roomCodeInput.value = requestedRoomCode.toUpperCase().slice(0, 6);
+        shouldAutoJoinRoom = true;
       }
 
       socket?.on("connect", () => {
         if (gameStarted && roomCode) {
           rejoinCurrentRoom();
+        } else if (shouldAutoJoinRoom) {
+          shouldAutoJoinRoom = false;
+          joinGame();
         } else {
           characterStatus.textContent = "Đã kết nối máy chủ phòng chơi.";
         }

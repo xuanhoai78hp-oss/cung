@@ -151,6 +151,18 @@ function leaveCurrentRoom(socket) {
 }
 
 io.on('connection', (socket) => {
+  socket.on('list_rooms', (callback) => {
+    const activeRooms = [...rooms.values()]
+      .map((room) => ({
+        code: room.code,
+        playerCount: [...room.players.values()].filter((player) => player.connected).length,
+      }))
+      .filter((room) => room.playerCount > 0)
+      .sort((left, right) => right.playerCount - left.playerCount);
+
+    acknowledge(callback, { ok: true, rooms: activeRooms });
+  });
+
   socket.on('create_room', (payload, callback) => {
     const playerId = normalizePlayerId(payload?.playerId);
     const name = normalizeName(payload?.name);
