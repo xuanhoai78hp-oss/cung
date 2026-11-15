@@ -609,7 +609,7 @@
         </section>
         <div class="controls">
           <div class="power-meter" id="power-field" hidden>
-            <div class="power-meter-track" id="power-meter" role="meter" aria-label="Lực ném" aria-valuemin="50" aria-valuemax="100" aria-valuenow="50">
+            <div class="power-meter-track" id="power-meter" role="meter" aria-label="Lực kéo cung" aria-valuemin="50" aria-valuemax="100" aria-valuenow="50">
               <span class="power-meter-fill" id="power-meter-fill"></span>
             </div>
           </div>
@@ -651,6 +651,8 @@
       const height = 1600;
       const centerX = width / 2;
       const laneTopY = 90;
+      const ARCHERY_DISTANCE_METERS = 70;
+      const ARROW_SPEED_METERS_PER_SECOND = 80;
       const backgroundImage = new Image();
       const bowSprite = new Image();
       const pins = [];
@@ -681,8 +683,10 @@
       let targetTransitionDuration = 900;
       let targetStart = { x: centerX, y: 562 };
       let targetEnd = { x: centerX, y: 562 };
+      let frozenTargetPosition = { x: centerX, y: 562 };
       let targetMotionActive = false;
       let targetZoomed = false;
+      let targetMarks = [];
       let firedArrow = null;
       let npcTimeout = null;
       let pendingRackReset = false;
@@ -1002,10 +1006,12 @@
         pendingArrow = null;
         shotTaken = false;
         throwChargePhase = "idle";
+        frozenTargetPosition = { x: centerX, y: 562 };
+        targetStart = frozenTargetPosition;
+        targetEnd = frozenTargetPosition;
         targetMotionActive = false;
         targetZoomed = false;
-        targetStart = { x: centerX, y: 562 };
-        targetEnd = { x: centerX, y: 562 };
+        targetMarks = [];
         firedArrow = null;
         powerField.hidden = true;
         throwButton.disabled = false;
@@ -1039,14 +1045,16 @@
         firedArrow = null;
         targetMotionActive = false;
         targetZoomed = false;
+        frozenTargetPosition = { x: centerX, y: 562 };
+        targetMarks = [];
         gamePlayers = [
           { id: playerId, name: playerName, connected: true, arrows: [], score: 0 },
           { id: "archery-npc", name: "Cung thủ máy", connected: true, arrows: [], score: 0 },
         ];
         targetTransitionStart = performance.now();
         targetTransitionDuration = 900;
-        targetStart = { x: centerX, y: 562 };
-        targetEnd = { x: centerX, y: 562 };
+        targetStart = frozenTargetPosition;
+        targetEnd = frozenTargetPosition;
         setScoreboardCollapsed(false);
         lobby.hidden = true;
         game.hidden = false;
@@ -1157,7 +1165,7 @@
         }
 
         if (throwChargePhase === "charging") {
-          throwButton.textContent = gameMode === "solo" ? "Đang ngắm…" : "Đang lấy đà…";
+          throwButton.textContent = gameMode === "solo" ? "Đang ngắm…" : "Đang kéo cung…";
           return;
         }
 
@@ -1165,7 +1173,7 @@
           ? "Ván mới"
           : gameMode === "solo"
             ? "Giữ để ngắm · thả để bắn"
-            : "Giữ để ném";
+            : "Giữ để kéo cung";
       }
 
       function resetPinRack() {
@@ -1291,7 +1299,11 @@
         const now = performance.now();
         const target = getTargetPosition(now);
         const aiming = throwChargePhase === "charging";
-        drawTarget(target.x, target.y, targetZoomed ? 70 : 23);
+        drawTarget(target.x, target.y, targetZoomed ? 70 : 23, targetMarks);
+
+        if (firedArrow) {
+          drawFlyingArrow(firedArrow);
+        }
 
         if (bowSprite.complete && bowSprite.naturalWidth > 0) {
           const frameWidth = bowSprite.naturalWidth / 3;
@@ -1299,8 +1311,10 @@
           context.drawImage(bowSprite, frame * frameWidth, 0, frameWidth, bowSprite.naturalHeight, 164, 64, 472, 1086);
         }
 
-        if (aiming) {
-          const aimPoint = getAimPoint(now);
+        if (aiming || firedArrow) {
+          const aimPoint = aiming
+            ? getAimPoint(now)
+            : { x: firedArrow.x, y: firedArrow.y };
           context.strokeStyle = "#fff4c9d9";
           context.lineWidth = 2;
           context.beginPath();
@@ -1316,33 +1330,11 @@
           context.stroke();
         }
 
-        if (firedArrow) {
-          const progress = firedArrow.progress;
-          const arrowX = firedArrow.startX + (firedArrow.x - firedArrow.startX) * progress;
-          const arrowY = firedArrow.startY + (firedArrow.y - firedArrow.startY) * progress;
-          context.strokeStyle = "#31251b";
-          context.lineWidth = 7;
-          context.lineCap = "round";
-          context.beginPath();
-          context.moveTo(firedArrow.startX, firedArrow.startY);
-          context.lineTo(arrowX, arrowY);
-          context.stroke();
-          context.strokeStyle = "#f4e3b2";
-          context.lineWidth = 3;
-          context.beginPath();
-          context.moveTo(firedArrow.startX, firedArrow.startY);
-          context.lineTo(arrowX, arrowY);
-          context.stroke();
-          context.fillStyle = "#fff3c9";
-          context.beginPath();
-          context.arc(arrowX, arrowY, 5, 0, Math.PI * 2);
-          context.fill();
-        }
       }
 
       function getTargetPosition(now) {
         if (!targetMotionActive) {
-          return { x: centerX, y: 562 };
+          return frozenTargetPosition;
         }
 
         const heldFor = Math.max(0, now - chargeStartTime);
@@ -1374,7 +1366,7 @@
         };
       }
 
-      function drawTarget(x, y, radius) {
+      function drawTarget(x, y, radius, marks = []) {
         context.save();
         context.translate(x, y);
         context.fillStyle = "#17342688";
@@ -1402,7 +1394,64 @@
         context.beginPath();
         context.arc(0, 0, radius * 0.07, 0, Math.PI * 2);
         context.fill();
+        for (const mark of marks) {
+          const markX = mark.x * radius;
+          const markY = mark.y * radius;
+          context.fillStyle = "#15110f";
+          context.beginPath();
+          context.arc(markX, markY, Math.max(1.2, radius * 0.025), 0, Math.PI * 2);
+          context.fill();
+          context.fillStyle = "#fff8d977";
+          context.beginPath();
+          context.arc(markX - radius * 0.012, markY - radius * 0.012, Math.max(0.45, radius * 0.008), 0, Math.PI * 2);
+          context.fill();
+        }
         context.restore();
+      }
+
+      function drawFlyingArrow(arrow) {
+        const progress = arrow.progress;
+        const tipX = arrow.startX + (arrow.x - arrow.startX) * progress;
+        const tipY = arrow.startY + (arrow.y - arrow.startY) * progress;
+        const directionX = arrow.x - arrow.startX;
+        const directionY = arrow.y - arrow.startY;
+        const distance = Math.hypot(directionX, directionY) || 1;
+        const length = 48 * (1 - progress) + 2.5;
+        const tailX = tipX - directionX / distance * length;
+        const tailY = tipY - directionY / distance * length;
+        const width = Math.max(0.7, length * 0.075);
+
+        context.save();
+        context.lineCap = "round";
+        context.strokeStyle = "#201911";
+        context.lineWidth = width + 1;
+        context.beginPath();
+        context.moveTo(tailX, tailY);
+        context.lineTo(tipX, tipY);
+        context.stroke();
+        context.strokeStyle = "#e9d8ae";
+        context.lineWidth = width * 0.48;
+        context.beginPath();
+        context.moveTo(tailX, tailY);
+        context.lineTo(tipX - directionX / distance * width, tipY - directionY / distance * width);
+        context.stroke();
+        context.restore();
+      }
+
+      function freezeTargetPosition(now = performance.now()) {
+        frozenTargetPosition = { ...getTargetPosition(now) };
+        targetStart = frozenTargetPosition;
+        targetEnd = frozenTargetPosition;
+        targetMotionActive = false;
+        return frozenTargetPosition;
+      }
+
+      function recordTargetMark(arrowPoint, target) {
+        const offsetX = arrowPoint.x - target.x;
+        const offsetY = arrowPoint.y - target.y;
+        if (Math.hypot(offsetX, offsetY) <= 70) {
+          targetMarks.push({ x: offsetX / 70, y: offsetY / 70 });
+        }
       }
 
       function drawRoomBackdrop() {
@@ -1845,6 +1894,29 @@
         source.stop(startAt + duration);
       }
 
+      function playArrowLaunchSound() {
+        const audio = getAudioContext();
+        if (!audio) {
+          return;
+        }
+
+        const startAt = audio.currentTime;
+        playNoise(0.32, 2600, 380, 0.09, startAt);
+        playTone(520, 190, startAt, 0.16, 0.045, "triangle");
+      }
+
+      function playArrowImpactSound() {
+        const audio = getAudioContext();
+        if (!audio) {
+          return;
+        }
+
+        const startAt = audio.currentTime;
+        playNoise(0.13, 520, 95, 0.2, startAt);
+        playNoise(0.055, 1900, 620, 0.055, startAt);
+        playTone(145, 52, startAt, 0.19, 0.19, "triangle");
+      }
+
       function playRollingSound(duration, scheduledAt, includeThump = false) {
         const audio = getAudioContext();
         if (!audio) {
@@ -1980,10 +2052,10 @@
         targetZoomed = true;
         targetTransitionStart = chargeStartTime;
         targetTransitionDuration = 900;
-        targetStart = { x: centerX, y: 562 };
+        targetStart = { ...frozenTargetPosition };
         targetEnd = {
-          x: centerX + (Math.random() - 0.5) * 90,
-          y: 562 + (Math.random() - 0.5) * 100,
+          x: 350 + Math.random() * 100,
+          y: 505 + Math.random() * 112,
         };
         powerField.hidden = false;
         if (gameMode === "solo") {
@@ -1998,10 +2070,9 @@
           return;
         }
 
-        const aimOffset = getAimTargetOffset();
-        const ballStart = getHeldBallPosition();
-        bowlerReleasePosition = ballStart;
-        lockedAimOffset = aimOffset;
+        const releasedAt = performance.now();
+        const aimPoint = getAimPoint(releasedAt);
+        freezeTargetPosition(releasedAt);
         if (chargeAnimationFrame !== null) {
           cancelAnimationFrame(chargeAnimationFrame);
           chargeAnimationFrame = null;
@@ -2011,10 +2082,10 @@
         throwChargePhase = "idle";
         powerField.hidden = true;
         if (gameMode === "solo") {
-          fireSoloArrow(getAimPoint(performance.now()));
+          fireSoloArrow(aimPoint);
           return;
         }
-        fireOnlineArrow(getAimPoint(performance.now()));
+        fireOnlineArrow(aimPoint);
       }
 
       function cancelHoldingThrow() {
@@ -2028,12 +2099,8 @@
         throwChargePhase = "idle";
         chargePower = 50;
         powerField.hidden = true;
-        if (gameMode === "solo") {
-          targetMotionActive = false;
-          targetZoomed = false;
-          targetStart = { x: centerX, y: 562 };
-          targetEnd = { x: centerX, y: 562 };
-        }
+        freezeTargetPosition();
+        targetZoomed = false;
         if (rollsSinceScoreboardCollapsed === 0) {
           setScoreboardCollapsed(false);
         }
@@ -2051,14 +2118,15 @@
 
       function animateSoloArrow(aimPoint, onImpact) {
         const startedAt = performance.now();
-        const flightDuration = 720;
+        const flightDuration = ARCHERY_DISTANCE_METERS / ARROW_SPEED_METERS_PER_SECOND * 1000;
         firedArrow = {
-          startX: 402,
-          startY: 1080,
+          startX: centerX,
+          startY: 1090,
           x: aimPoint.x,
           y: aimPoint.y,
           progress: 0,
         };
+        playArrowLaunchSound();
 
         function animate(now) {
           firedArrow.progress = Math.min(1, (now - startedAt) / flightDuration);
@@ -2067,6 +2135,7 @@
             animationFrame = requestAnimationFrame(animate);
             return;
           }
+          playArrowImpactSound();
           firedArrow = null;
           animationFrame = null;
           onImpact(aimPoint, getTargetPosition(now));
@@ -2080,13 +2149,15 @@
         throwButton.disabled = true;
         powerField.hidden = true;
         animateSoloArrow(aimPoint, (arrowPoint, target) => {
+          recordTargetMark(arrowPoint, target);
           const score = getArrowScore(arrowPoint, target);
           const player = gamePlayers[0];
           player.arrows[currentArrowIndex] = score;
           player.score += score;
-          targetMotionActive = false;
+          freezeTargetPosition();
           targetZoomed = false;
           setScoreboardCollapsed(false);
+          drawLane();
           gameStatus.textContent = score === 10
             ? "Hồng tâm! Bạn được 10 điểm."
             : `Mũi tên được ${score} điểm. Cung thủ máy chuẩn bị bắn…`;
@@ -2100,6 +2171,8 @@
         throwButton.disabled = true;
         powerField.hidden = true;
         animateSoloArrow(aimPoint, (arrowPoint, target) => {
+          recordTargetMark(arrowPoint, target);
+          drawLane();
           const ownPlayer = gamePlayers.find((player) => player.id === playerId);
           if (!ownPlayer) {
             gameStatus.textContent = "Không tìm thấy người chơi trong phòng.";
@@ -2176,13 +2249,13 @@
         chargeStartTime = performance.now() - 3200;
         targetTransitionStart = performance.now();
         targetTransitionDuration = 260;
-        targetStart = { x: centerX, y: 562 };
+        targetStart = { ...frozenTargetPosition };
         targetEnd = {
           x: 350 + Math.random() * 100,
           y: 505 + Math.random() * 112,
         };
         const now = performance.now();
-        const target = getTargetPosition(now);
+        const target = freezeTargetPosition(now);
         const angle = Math.random() * Math.PI * 2;
         const missDistance = (0.12 + Math.random() * 0.8) * 70;
         const aimPoint = {
@@ -2191,15 +2264,14 @@
         };
         gameStatus.textContent = "Cung thủ máy đang bắn…";
         animateSoloArrow(aimPoint, (arrow, impactTarget) => {
+          recordTargetMark(arrow, impactTarget);
           const score = getArrowScore(arrow, impactTarget);
           const npc = gamePlayers[1];
           npc.arrows[currentArrowIndex] = score;
           npc.score += score;
           currentArrowIndex += 1;
-          targetMotionActive = false;
+          freezeTargetPosition();
           targetZoomed = false;
-          targetStart = { x: centerX, y: 562 };
-          targetEnd = { x: centerX, y: 562 };
           if (currentArrowIndex >= 10) {
             gameFinished = true;
             gameStatus.textContent = `Ván kết thúc · ${gamePlayers[0].score}–${npc.score} điểm`;
