@@ -480,6 +480,16 @@
         aspect-ratio: 1 / 2;
       }
 
+      #wind-flag-layer {
+        position: absolute;
+        z-index: 1;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        box-shadow: none;
+        pointer-events: none;
+      }
+
       .controls {
         display: grid;
         position: absolute;
@@ -756,6 +766,7 @@
           <canvas id="lane" width="800" height="1600" role="img" aria-label="Trường bắn cung với bia hồng tâm">
             Trình duyệt của bạn không hỗ trợ canvas.
           </canvas>
+          <canvas id="wind-flag-layer" width="800" height="1600" aria-hidden="true"></canvas>
         </div>
         <section class="room-board" aria-label="Bảng điểm">
           <div class="room-meta">
@@ -806,6 +817,8 @@
     <script>
       const canvas = document.querySelector("#lane");
       const context = canvas.getContext("2d");
+      const windFlagCanvas = document.querySelector("#wind-flag-layer");
+      const windFlagContext = windFlagCanvas.getContext("2d");
       const targetDetail = document.querySelector("#target-detail");
       const targetDetailCanvas = document.querySelector("#target-detail-canvas");
       const targetDetailContext = targetDetailCanvas.getContext("2d");
@@ -878,6 +891,14 @@
       let targetMotionActive = false;
       let targetZoomed = false;
       let targetMarks = [];
+      let windAngle = Math.random() * Math.PI * 2;
+      let idleWindAngle = windAngle;
+      let targetWindAngle = windAngle;
+      let targetWindStrength = 0.45;
+      let lastTargetSample = { x: centerX, y: 562, time: 0 };
+      let windAnimationFrame = null;
+      let lastWindFrameTime = 0;
+      let nextIdleWindShift = 0;
       let firedArrow = null;
       let npcTimeout = null;
       let pendingRackReset = false;
@@ -1275,6 +1296,7 @@
         shareRoomButton.hidden = false;
         shareRoomButton.textContent = "Chia sẻ";
         prepareNextArrow();
+        startWindAnimation();
       }
 
       function prepareNextArrow() {
@@ -1297,6 +1319,7 @@
         syncThrowButtonLabel();
         renderRoomBoard();
         drawLane();
+        startWindAnimation();
       }
 
       function startSoloGame() {
@@ -1561,6 +1584,10 @@
           window.clearTimeout(npcTimeout);
           npcTimeout = null;
         }
+        if (windAnimationFrame !== null) {
+          cancelAnimationFrame(windAnimationFrame);
+          windAnimationFrame = null;
+        }
         game.hidden = true;
         lobby.hidden = false;
         document.body.classList.remove("is-playing");
@@ -1643,10 +1670,167 @@
 
         const progress = Math.max(0, Math.min(1, (now - targetTransitionStart) / targetTransitionDuration));
         const eased = progress * progress * (3 - 2 * progress);
-        return {
+        const position = {
           x: targetStart.x + (targetEnd.x - targetStart.x) * eased,
           y: targetStart.y + (targetEnd.y - targetStart.y) * eased,
         };
+        const elapsed = now - lastTargetSample.time;
+        if (elapsed > 0) {
+          const deltaX = position.x - lastTargetSample.x;
+          const deltaY = position.y - lastTargetSample.y;
+          const speed = Math.hypot(deltaX, deltaY) / elapsed * 1000;
+          if (speed > 8) {
+            targetWindAngle = Math.atan2(deltaY, deltaX);
+            targetWindStrength = Math.min(1, Math.max(0.35, speed / 180));
+          }
+          lastTargetSample = { ...position, time: now };
+        }
+        return position;
+      }
+
+      function startWindAnimation() {
+        if (windAnimationFrame !== null) {
+          return;
+        }
+
+        const animateWind = (now) => {
+          if (!gameStarted) {
+            windAnimationFrame = null;
+            return;
+          }
+
+          if (throwChargePhase !== "charging" && now >= nextIdleWindShift) {
+            idleWindAngle += (Math.random() - 0.5) * Math.PI * 1.35;
+            nextIdleWindShift = now + 1800 + Math.random() * 2600;
+          }
+          const desiredAngle = throwChargePhase === "charging" ? targetWindAngle : idleWindAngle;
+          const angleDifference = Math.atan2(
+            Math.sin(desiredAngle - windAngle),
+            Math.cos(desiredAngle - windAngle),
+          );
+          const elapsed = lastTargetSample.time ? Math.max(0, now - lastWindFrameTime) : 16;
+          const turnRate = throwChargePhase === "charging" ? 0.008 : 0.003;
+          windAngle += angleDifference * Math.min(1, elapsed * turnRate);
+          lastWindFrameTime = now;
+          drawWindFlag(now);
+          windAnimationFrame = requestAnimationFrame(animateWind);
+        };
+
+        lastWindFrameTime = performance.now();
+        nextIdleWindShift = lastWindFrameTime + 1500;
+        windAnimationFrame = requestAnimationFrame(animateWind);
+      }
+
+      function drawWindFlag(now) {
+        const flagContext = windFlagContext;
+        const poleX = 132;
+        const poleTop = 482;
+        const poleBottom = 664;
+        const anchorX = poleX + 4;
+        const anchorY = poleTop + 17;
+        const flagLength = 118;
+        const flagHeight = 62;
+        const directionX = Math.cos(windAngle);
+        const directionY = Math.sin(windAngle);
+        const normalX = -directionY;
+        const normalY = directionX;
+        const phase = now * 0.006;
+        const flutterStrength = throwChargePhase === "charging" ? targetWindStrength : 0.58;
+        const columns = 12;
+        const rows = 8;
+        const points = [];
+
+        flagContext.clearRect(88, 450, 250, 245);
+        flagContext.save();
+        flagContext.lineCap = "round";
+        flagContext.lineJoin = "round";
+
+        flagContext.fillStyle = "#10251c55";
+        flagContext.beginPath();
+        flagContext.ellipse(poleX + 10, poleBottom + 2, 20, 6, 0, 0, Math.PI * 2);
+        flagContext.fill();
+
+        const poleGradient = flagContext.createLinearGradient(poleX - 5, 0, poleX + 6, 0);
+        poleGradient.addColorStop(0, "#29352e");
+        poleGradient.addColorStop(0.28, "#f1e2b7");
+        poleGradient.addColorStop(0.56, "#b2a27c");
+        poleGradient.addColorStop(1, "#39453b");
+        flagContext.strokeStyle = poleGradient;
+        flagContext.lineWidth = 8;
+        flagContext.beginPath();
+        flagContext.moveTo(poleX, poleBottom);
+        flagContext.lineTo(poleX, poleTop);
+        flagContext.stroke();
+        flagContext.strokeStyle = "#fff4d288";
+        flagContext.lineWidth = 1.5;
+        flagContext.beginPath();
+        flagContext.moveTo(poleX - 1.5, poleBottom - 2);
+        flagContext.lineTo(poleX - 1.5, poleTop + 2);
+        flagContext.stroke();
+        flagContext.fillStyle = "#f4d27a";
+        flagContext.beginPath();
+        flagContext.arc(poleX, poleTop - 2, 5, 0, Math.PI * 2);
+        flagContext.fill();
+
+        for (let column = 0; column <= columns; column += 1) {
+          const along = column / columns;
+          const taper = 1 - along * 0.82;
+          const wave = (
+            Math.sin(phase - along * 9) * 0.72
+            + Math.sin(phase * 1.65 - along * 15) * 0.28
+          ) * (2 + along * 10) * flutterStrength;
+          points[column] = [];
+          for (let row = 0; row <= rows; row += 1) {
+            const across = row / rows * 2 - 1;
+            const flutter = wave * (0.25 + (across + 1) * 0.18) * (1 - along);
+            points[column][row] = {
+              x: anchorX + directionX * along * flagLength
+                + normalX * (across * flagHeight * 0.5 * taper + flutter),
+              y: anchorY + directionY * along * flagLength
+                + normalY * (across * flagHeight * 0.5 * taper + flutter),
+            };
+          }
+        }
+
+        for (let column = 0; column < columns; column += 1) {
+          const fold = Math.sin(phase - (column / columns) * 9);
+          const light = Math.max(0, Math.min(1, 0.5 + fold * 0.25 + (1 - column / columns) * 0.15));
+          const red = Math.round(88 + light * 142);
+          const green = Math.round(18 + light * 44);
+          const blue = Math.round(22 + light * 36);
+          flagContext.fillStyle = `rgb(${red}, ${green}, ${blue})`;
+          flagContext.beginPath();
+          flagContext.moveTo(points[column][0].x, points[column][0].y);
+          flagContext.lineTo(points[column + 1][0].x, points[column + 1][0].y);
+          flagContext.lineTo(points[column + 1][rows].x, points[column + 1][rows].y);
+          flagContext.lineTo(points[column][rows].x, points[column][rows].y);
+          flagContext.closePath();
+          flagContext.fill();
+        }
+
+        flagContext.strokeStyle = "#ffdda18c";
+        flagContext.lineWidth = 2;
+        flagContext.beginPath();
+        flagContext.moveTo(points[0][0].x, points[0][0].y);
+        for (let column = 1; column <= columns; column += 1) {
+          flagContext.lineTo(points[column][0].x, points[column][0].y);
+        }
+        for (let row = 0; row <= rows; row += 1) {
+          flagContext.lineTo(points[columns][row].x, points[columns][row].y);
+        }
+        for (let column = columns; column >= 0; column -= 1) {
+          flagContext.lineTo(points[column][rows].x, points[column][rows].y);
+        }
+        flagContext.lineTo(points[0][0].x, points[0][0].y);
+        flagContext.stroke();
+
+        flagContext.strokeStyle = "#5e1825aa";
+        flagContext.lineWidth = 3;
+        flagContext.beginPath();
+        flagContext.moveTo(anchorX, anchorY - flagHeight * 0.5);
+        flagContext.lineTo(anchorX, anchorY + flagHeight * 0.5);
+        flagContext.stroke();
+        flagContext.restore();
       }
 
       function getAimPoint(now) {
@@ -2373,6 +2557,7 @@
         targetTransitionStart = chargeStartTime;
         targetTransitionDuration = 900;
         targetStart = { ...frozenTargetPosition };
+        lastTargetSample = { ...frozenTargetPosition, time: chargeStartTime };
         targetEnd = {
           x: 350 + Math.random() * 100,
           y: 505 + Math.random() * 112,
